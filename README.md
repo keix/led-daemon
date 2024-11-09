@@ -50,11 +50,11 @@ For Ubuntu/Debian:
 sudo apt install build-essential
 ```
 
-Building the Project
+#### Building the Project
 Clone the repository:
 
 ```bash
-git clone <repository-url>
+git clone git@github.com:keix/led-daemon.git
 cd led-daemon
 ```
 

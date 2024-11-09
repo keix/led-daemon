@@ -2,6 +2,7 @@ const std = @import("std");
 const c = @cImport({
     @cInclude("unistd.h");
     @cInclude("stdlib.h");
+    @cInclude("fcntl.h");
     @cInclude("hidapi/hidapi.h");
 });
 
@@ -12,38 +13,55 @@ const AURA_MAINBOARD_CONTROL_MODE_EFFECT = 0x35;
 const AURA_MAINBOARD_CONTROL_MODE_EFFECT_COLOR = 0x36;
 const AURA_MAINBOARD_CONTROL_MODE_COMMIT = 0x3F;
 
-pub fn main() !void {
+pub fn daemonize() !void {
     const first_pid = c.fork();
     if (first_pid < 0) {
-        std.debug.print("Failed to fork\n", .{});
+        std.debug.print("First fork failed:\n", .{});
         c.exit(1);
     }
 
-    if (first_pid == 0) {
-        if (c.setsid() < 0) {
-            std.debug.print("Failed to create session\n", .{});
-            c.exit(1);
-        }
-
-        const second_pid = c.fork();
-        if (second_pid < 0) {
-            std.debug.print("Failed to fork again\n", .{});
-            c.exit(1);
-        }
-
-        if (second_pid == 0) {
-            while (true) {
-                const color = try getColor();
-                _ = try updateLedColor(color.red, color.green, color.blue);
-                std.debug.print("Daemon is running...\n", .{});
-                std.time.sleep(ONE_SECOND);
-            }
-        } else {
-            c._exit(0);
-        }
-    } else {
+    if (first_pid > 0) {
         c._exit(0);
     }
+
+    if (c.setsid() < 0) {
+        std.debug.print("Failed to create new session:\n", .{});
+        c.exit(1);
+    }
+
+    const second_pid = c.fork();
+    if (second_pid < 0) {
+        std.debug.print("Second fork failed:\n", .{});
+        c.exit(1);
+    }
+
+    if (second_pid > 0) {
+        c._exit(0);
+    }
+
+    _ = try redirectStdoutToNull();
+
+}
+
+pub fn main() !void {
+    try daemonize();
+
+    while (true) {
+        const color = try getColor();
+        _ = try updateLedColor(color.red, color.green, color.blue);
+        std.debug.print("Daemon is running...\n", .{});
+        std.time.sleep(ONE_SECOND);
+    }
+}
+
+fn redirectStdoutToNull() !void {
+    const dev_null = "/dev/null";
+    const fd = c.open(dev_null, c.O_WRONLY);
+    if (fd < 0) return error.OpenFailed;
+    defer _ = c.close(fd);
+
+    if (c.dup2(fd, 1) < 0) return error.Dup2Failed; // 標準出力 (stdout) を /dev/null にリダイレクト
+    if (c.dup2(fd, 2) < 0) return error.Dup2Failed; // 標準エラー出力 (stderr) を /dev/null にリダイレクト
 }
 
 pub fn getColor() !Color {
@@ -62,11 +80,11 @@ pub fn getColor() !Color {
     defer allocator.free(contents);
 
     const temp_milli = try parseTemperature(contents);
-    const temp_celsius = @divTrunc(temp_milli, 1000);
+    const temp_celsius =  @divTrunc(temp_milli, 1000);
     try stdout.print("CPU Temperature: {d}°C\n", .{temp_celsius});
 
     const rgb = getTemperatureColor(temp_celsius);
-    try stdout.print("RGB Color: ({d}, {d}, {d})\n", .{ rgb.red, rgb.green, rgb.blue });
+    try stdout.print("RGB Color: ({d}, {d}, {d})\n", .{rgb.red, rgb.green, rgb.blue});
 
     return rgb;
 }
@@ -125,7 +143,7 @@ fn sendEffect(dev: ?*c.hid_device, channel: u8, mode: u8, shutdown_effect: bool)
 
     const result = c.hid_write(dev, &usb_buf, usb_buf.len);
     try checkError(result);
-    std.debug.print("Effect set to mode {d} on channel {d}\n", .{ mode, channel });
+    std.debug.print("Effect set to mode {d} on channel {d}\n", .{mode, channel});
 }
 
 fn sendColor(dev: ?*c.hid_device, start_led: u8, led_count: u8, led_data: *[3]u8, shutdown_effect: bool) !void {
@@ -144,7 +162,7 @@ fn sendColor(dev: ?*c.hid_device, start_led: u8, led_count: u8, led_data: *[3]u8
 
     const result = c.hid_write(dev, &usb_buf, usb_buf.len);
     try checkError(result);
-    std.debug.print("Color data sent for {d} LEDs starting at {d}\n", .{ led_count, start_led });
+    std.debug.print("Color data sent for {d} LEDs starting at {d}\n", .{led_count, start_led});
 }
 
 fn sendCommit(dev: ?*c.hid_device) !void {
@@ -161,10 +179,10 @@ fn sendCommit(dev: ?*c.hid_device) !void {
 
 fn setMode(dev: ?*c.hid_device, channel: u8, mode: u8, red: u8, green: u8, blue: u8) !void {
     const shutdown_effect = false;
-
     try sendEffect(dev, channel, mode, shutdown_effect);
+
     if (mode == STATIC_MODE) {
-        var led_data: [3]u8 = [_]u8{ red, green, blue };
+        var led_data: [3]u8 = [_]u8{red, green, blue};
         try sendColor(dev, channel, 1, &led_data, shutdown_effect);
     }
 }
