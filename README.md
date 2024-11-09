@@ -25,30 +25,7 @@ Communicates with ASUS Aura devices via hidapi.
 #### Prerequisites
 Install Zig: Follow the official Zig installation guide.
 
-Install libhidapi:
-
-For Ubuntu/Debian:
-```bash
-sudo apt install libhidapi-dev
-```
-
-For Fedora:
-```bash
-sudo dnf install hidapi-devel
-```
-
-For Arch Linux:
-```bash
-sudo pacman -S hidapi
-```
-
-Install Development Tools: Ensure that the C compiler and necessary development libraries are installed:
-
-For Ubuntu/Debian:
-```bash
-
-sudo apt install build-essential
-```
+- https://github.com/ziglang/zig/tree/master?tab=readme-ov-file#installation
 
 #### Building the Project
 Clone the repository:
@@ -71,6 +48,12 @@ Run the daemon:
 
 ```bash
 ./zig-out/bin/led-daemon
+```
+
+Stop the daemon:
+
+```bash
+kill -9 $(cat led-daemon.pid) && rm led-daemon.pid
 ```
 
 The daemon will:
