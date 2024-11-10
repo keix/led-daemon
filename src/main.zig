@@ -16,12 +16,12 @@ const AURA_MAINBOARD_CONTROL_MODE_EFFECT = 0x35;
 const AURA_MAINBOARD_CONTROL_MODE_EFFECT_COLOR = 0x36;
 const AURA_MAINBOARD_CONTROL_MODE_COMMIT = 0x3F;
 
-const PID_LOG = "led-daemon.pid";
+const PID_LOG = "/tmp/led-daemon.pid";
 const DEV_NULL = "/dev/null";
 const THERMAL_ZONE = "/sys/class/thermal/thermal_zone2/temp";
 const DIRECT_MODE = 0x01;
 
-const TEMP_THRESHOLD = 30;
+const TEMP_THRESHOLD = 35;
 const CELSIUS = 1000;
 const ONE_SECOND = 1000000000;
 
@@ -31,8 +31,8 @@ pub fn daemonize() !void {
         std.debug.print("First fork failed:\n", .{});
         c.exit(ERROR);
     }
-
     if (first_pid > 0) c._exit(SUCCESS);
+
     if (c.setsid() < 0) {
         std.debug.print("Failed to create new session:\n", .{});
         c.exit(ERROR);
@@ -45,6 +45,13 @@ pub fn daemonize() !void {
     }
     if (second_pid > 0) c._exit(SUCCESS);
 
+    if (c.chdir("/") < 0) {
+        std.debug.print("Failed to change directory to /:\n", .{});
+        c.exit(ERROR);
+    }
+
+    _ = try setRootDirectory();
+    _ = try writePid();
     _ = try redirectStdoutToNull();
 }
 
@@ -58,9 +65,15 @@ pub fn writePid() !void {
     _ = try file.writeAll(written);
 }
 
+pub fn setRootDirectory() !void {
+    if (c.chdir("/") < 0) {
+        std.debug.print("Failed to change directory to /:\n", .{});
+        c.exit(ERROR);
+    }
+}
+
 pub fn main() !void {
     _ = try daemonize();
-    _ = try writePid();
 
     try checkError(c.hid_init());
     defer _ = c.hid_exit();
@@ -78,6 +91,7 @@ fn redirectStdoutToNull() !void {
     if (fd < 0) return error.OpenFailed;
     defer _ = c.close(fd);
 
+    if (c.dup2(fd, 0) < 0) return error.Dup2Failed;
     if (c.dup2(fd, 1) < 0) return error.Dup2Failed;
     if (c.dup2(fd, 2) < 0) return error.Dup2Failed;
 }
