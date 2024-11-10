@@ -53,7 +53,7 @@ Run the daemon:
 Stop the daemon:
 
 ```bash
-kill -9 $(cat led-daemon.pid) && rm led-daemon.pid
+kill -9 $(cat /tmp/led-daemon.pid) && rm /tmp/led-daemon.pid
 ```
 
 The daemon will:
