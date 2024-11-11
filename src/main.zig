@@ -18,14 +18,28 @@ const AURA_MAINBOARD_CONTROL_MODE_COMMIT = 0x3F;
 
 const PID_LOG = "/tmp/led-daemon.pid";
 const DEV_NULL = "/dev/null";
-const THERMAL_ZONE = "/sys/class/thermal/thermal_zone2/temp";
+const THERMAL_ZONE = "/sys/class/thermal/thermal_zone0/temp";
 const DIRECT_MODE = 0x01;
 
-const TEMP_THRESHOLD = 35;
+const TEMP_THRESHOLD = 30;
 const CELSIUS = 1000;
 const ONE_SECOND = 1000000000;
 
-pub fn daemonize() !void {
+pub fn main() !void {
+    _ = try daemonize();
+
+    try checkError(c.hid_init());
+    defer _ = c.hid_exit();
+
+    while (true) {
+        const color = try getColor();
+        _ = try updateLedColor(color.red, color.green, color.blue);
+        std.debug.print("Daemon is running...\n", .{});
+        std.time.sleep(ONE_SECOND);
+    }
+}
+
+fn daemonize() !void {
     const first_pid = c.fork();
     if (first_pid < 0) {
         std.debug.print("First fork failed:\n", .{});
@@ -45,17 +59,19 @@ pub fn daemonize() !void {
     }
     if (second_pid > 0) c._exit(SUCCESS);
 
-    if (c.chdir("/") < 0) {
-        std.debug.print("Failed to change directory to /:\n", .{});
-        c.exit(ERROR);
-    }
-
     _ = try setRootDirectory();
     _ = try writePid();
     _ = try redirectStdoutToNull();
 }
 
-pub fn writePid() !void {
+fn setRootDirectory() !void {
+    if (c.chdir("/") < 0) {
+        std.debug.print("Failed to change directory to /:\n", .{});
+        c.exit(ERROR);
+    }
+}
+
+fn writePid() !void {
     const pid = c.getpid();
 
     var file = try std.fs.cwd().createFile(PID_LOG, .{ .truncate = true });
@@ -63,27 +79,6 @@ pub fn writePid() !void {
     var buffer: [32]u8 = undefined;
     const written = try std.fmt.bufPrint(&buffer, "{d}\n", .{pid});
     _ = try file.writeAll(written);
-}
-
-pub fn setRootDirectory() !void {
-    if (c.chdir("/") < 0) {
-        std.debug.print("Failed to change directory to /:\n", .{});
-        c.exit(ERROR);
-    }
-}
-
-pub fn main() !void {
-    _ = try daemonize();
-
-    try checkError(c.hid_init());
-    defer _ = c.hid_exit();
-
-    while (true) {
-        const color = try getColor();
-        _ = try updateLedColor(color.red, color.green, color.blue);
-        std.debug.print("Daemon is running...\n", .{});
-        std.time.sleep(ONE_SECOND);
-    }
 }
 
 fn redirectStdoutToNull() !void {
@@ -96,7 +91,7 @@ fn redirectStdoutToNull() !void {
     if (c.dup2(fd, 2) < 0) return error.Dup2Failed;
 }
 
-pub fn getColor() !Color {
+fn getColor() !Color {
     const stdout = std.io.getStdOut().writer();
     const file = try std.fs.cwd().openFile(THERMAL_ZONE, .{});
     defer file.close();
@@ -146,7 +141,7 @@ const Color = struct {
     blue: u8,
 };
 
-pub fn updateLedColor(red: u8, green: u8, blue: u8) !void {
+fn updateLedColor(red: u8, green: u8, blue: u8) !void {
     const dev: ?*c.hid_device = c.hid_open(VENDOR_ID, PRODUCT_ID, null);
     if (dev == null) {
         std.debug.print("Failed to open ASUS Aura Mainboard\n", .{});
