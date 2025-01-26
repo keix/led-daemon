@@ -19,7 +19,6 @@ const AURA_MAINBOARD_CONTROL_MODE_COMMIT = 0x3F;
 const PID_LOG = "/tmp/led-daemon.pid";
 const DEV_NULL = "/dev/null";
 const THERMAL_ZONE = "/sys/class/thermal/thermal_zone0/temp";
-const DIRECT_MODE = 0x01;
 
 const TEMP_THRESHOLD = 30;
 const CELSIUS = 1000;
@@ -203,10 +202,8 @@ fn setMode(dev: ?*c.hid_device, channel: u8, mode: u8, red: u8, green: u8, blue:
     const shutdown_effect = false;
     try sendEffect(dev, channel, mode, shutdown_effect);
 
-    if (mode == DIRECT_MODE) {
-        var led_data: [3]u8 = [_]u8{ red, green, blue };
-        try sendColor(dev, channel, 1, &led_data, shutdown_effect);
-    }
+    var led_data: [3]u8 = [_]u8{ red, green, blue };
+    try sendColor(dev, channel, 1, &led_data, shutdown_effect);
 }
 
 fn checkError(result: c_int) !void {
